@@ -1,0 +1,2 @@
+context.solver.docloud.url = 'https://api-oaas.docloud.ibmcloud.com/job_manager/rest/v1/'
+context.solver.docloud.key = 'api_key'
