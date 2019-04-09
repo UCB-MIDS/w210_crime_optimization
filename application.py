@@ -11,9 +11,8 @@ import itertools
 import configparser
 import requests
 import math
-#import docplex.cp
-#import docplex.cp.modeler as cpxmdl
-#from docplex.cp.model import *
+import s3fs
+import configparser
 from docplex.mp.model import Model
 from docplex.mp.context import Context
 from scipy.stats import t
@@ -24,6 +23,41 @@ from flask_restful import Resource, Api, reqparse
 from flask_cors import CORS, cross_origin
 from flask_sqlalchemy import SQLAlchemy
 
+### Load configuration file
+s3fs.S3FileSystem.read_timeout = 5184000  # one day
+s3fs.S3FileSystem.connect_timeout = 5184000  # one day
+s3 = s3fs.S3FileSystem(anon=False)
+config_file = 'w210policedata/config/optimization.ini'
+try:
+    temp_file = tempfile.NamedTemporaryFile(delete=True)
+    s3.get(config_file,temp_file.name)
+    config = configparser.ConfigParser()
+    config.read(temp_file.name)
+except:
+    print('Failed to load service configuration file.')
+    print('Creating new file with default values.')
+    config = configparser.ConfigParser()
+    config['GENERAL'] = {'MLServiceEndpoint': 'http://localhost:60000'}
+    temp_file = tempfile.NamedTemporaryFile(delete=True)
+    with open(temp_file.name, 'w') as confs:
+        config.write(confs)
+    s3.put(temp_file.name,config_file)
+    temp_file.close()
+ml_endpoint = config['GENERAL']['MLServiceEndpoint']
+
+### Load CPLEX configuration file and library
+config_file = 'w210policedata/config/docloud_config.py'
+try:
+    s3.get(config_file,'docloud_config.py')
+except:
+    print('Failed to load DOCplexCloud config file. CPLEX Optimization will not be available.')
+
+### Load Flask configuration file
+config_file = 'w210policedata/config/config.py'
+try:
+    s3.get(config_file,'config.py')
+except:
+    print('Failed to load application configuration file!')
 
 application = Flask(__name__)
 api = Api(application)
@@ -258,9 +292,12 @@ class loadDeploymentPlan(Resource):
         weekyear = date.isocalendar()[1]
         period = json.loads(args['period'])
         payload = {'weekday':json.dumps([weekday]),'weekyear':json.dumps([weekyear]),'hourday':json.dumps([period])}
-        url ='http://localhost:60000/predict'
-        r = requests.post(url, data=payload)
-        crimepreds = r.json()['result']
+        url =ml_endpoint+'/predict'
+        try:
+            r = requests.post(url, data=payload)
+            crimepreds = r.json()['result']
+        except:
+            return {'message':'Error loading crime predictions from Machine Learning service.','result':'failed'}
 
         # Load the model from the database to the in-memory model
         communities = {}
