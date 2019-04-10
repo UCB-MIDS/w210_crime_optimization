@@ -580,12 +580,18 @@ class runOptimization(Resource):
         # Get the passed arguments
         argparser = reqparse.RequestParser()
         argparser.add_argument('useFairness')
+        argparser.add_argument('minOnePatrolPerComm')
         args = argparser.parse_args()
 
         if json.loads(args['useFairness']) == 'yes':
             useFairness = True
         else:
             useFairness = False
+
+        if json.loads(args['minOnePatrolPerComm']) == 'yes':
+            minOnePatrolPerComm = True
+        else:
+            minOnePatrolPerComm = False
 
         print("Building model...")
         # Create model
@@ -620,6 +626,12 @@ class runOptimization(Resource):
             max_patrols = policeDistricts[district]['total_patrols']
             model.add_constraint(deployed_cpx[dist_id] <= max_patrols)
             model.add_constraint(deployed_cpx[dist_id] >= 0)
+
+        # At least one patrol per community
+        if minOnePatrolPerComm:
+            for community in communities:
+                comm_id = communities[community]['id']
+                model.add_constraint(deployments_cpx[comm_id]['total'] >= 1)
 
         print("Calculating objective...")
         print("     - Crime Coverage")
